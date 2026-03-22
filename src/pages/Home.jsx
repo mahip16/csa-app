@@ -6,7 +6,7 @@ export default function Home() {
 
   return (
     <div className="home-container">
-      <h1 className="home-title">Co-op Application Portal</h1>
+      <h1 className="home-title">Co-op Support Application</h1>
       <p className="home-subtitle">Select your role to continue</p>
 
       <div className="home-cards">
@@ -14,7 +14,7 @@ export default function Home() {
         <div className="home-card">
           <div className="home-icon blue-icon">🎓</div>
           <h2>Student</h2>
-          <p>Apply for co-op positions and track your application</p>
+          <p>Apply to the co-op program and track your application status</p>
           <button className="btn-outline" onClick={() => navigate("/register")}>Register</button>
           <button className="btn-solid" onClick={() => navigate("/login")}>Login</button>
         </div>
