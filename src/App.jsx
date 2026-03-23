@@ -2,6 +2,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { AuthProvider } from "./context/AuthContext"
 
+
 import Home from "./pages/Home"
 
 import Register from "./pages/student/Register"
