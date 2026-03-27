@@ -61,12 +61,9 @@ export default function EmployerLogin() {
 
         {/* Icon */}
         <div style={{ width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#fef3d7', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
+          <svg fill="#f5a623" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"
+          width="30px" height="30px" 
+          stroke="#f5a623" stroke-width="9.728"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <g> <path d="M470.948,481.583V0H41.052v481.583H15.209V512h25.842H184.52H327.48h143.468h25.842v-30.417H470.948z M240.791,481.583 h-25.855v-70.117h25.855V481.583z M297.063,481.583h-25.855v-70.117h25.855V481.583z M440.531,481.583H327.48V381.049H184.52 v100.534H71.469V30.417h369.062V481.583z"></path> </g> </g> <g> <g> <rect x="100.114" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="310.935" width="30.417" height="35.821"></rect> </g> </g> </g></svg>
         </div>
 
         <h1 style={{ fontSize: '1.6rem', fontWeight: '700', color: '#0f1f4b', marginBottom: '0.3rem' }}>Employer Login</h1>
@@ -122,12 +119,11 @@ export default function EmployerLogin() {
           </button>
         </form>
 
-        <div style={{ borderTop: '1px solid #e8edf5', marginTop: '1.5rem', paddingTop: '1.25rem', textAlign: 'center' }}>
+          <div style={{ borderTop: '1px solid #e8edf5', marginTop: '1.5rem', paddingTop: '1.25rem', textAlign: 'center' }}>
           <span
-            onClick={() => navigate('/')}
-            style={{ fontSize: '0.82rem', color: '#8a95a8', cursor: 'pointer', textDecoration: 'underline' }}
-          >
-            Back to Home
+            onClick={() => navigate('/employer/register')}
+            style={{ fontSize: '0.82rem', color: '#8a95a8', cursor: 'pointer', textDecoration: 'underline' }}>
+            Need to make an account? Register
           </span>
         </div>
       </div>

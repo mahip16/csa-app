@@ -21,6 +21,7 @@ import EmployerRegister from "./pages/employer/EmployerRegister"
 import EmployerLogin from "./pages/employer/EmployerLogin"
 import EmployerDashboard from "./pages/employer/EmployerDashboard"
 import EvaluationForm from "./pages/employer/EvaluationForm"
+import MyStudents from "./pages/employer/MyStudents"
 
 import ProtectedRoute from "./components/ProtectedRoute"
 
@@ -86,6 +87,12 @@ function App() {
           <Route path="/employer/evaluation" element={
             <ProtectedRoute role="employer">
               <EvaluationForm />
+            </ProtectedRoute>
+          }/>
+          
+          <Route path="/employer/my-students" element={
+            <ProtectedRoute role="employer">
+              <MyStudents />
             </ProtectedRoute>
           }/>
 
