@@ -149,7 +149,7 @@ export default function MyStudents() {
             boxShadow: T.cardShadow
           }}>
 
-            {/* Avatar */}
+            
             <div style={{
               width: '40px',
               height: '40px',

@@ -50,7 +50,7 @@ function App() {
               <CoordinatorDashboard />
             </ProtectedRoute>
           }/>
-          <Route path="/coordinator/review" element={
+          <Route path="/coordinator/applications" element={
             <ProtectedRoute role="coordinator">
               <ApplicationReview />
             </ProtectedRoute>
