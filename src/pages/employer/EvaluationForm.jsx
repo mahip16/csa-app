@@ -45,6 +45,7 @@ export default function EmployerEvaluationForm() {
   });
 
   async function handleFile(file) {
+  console.log("FILE RECEIVED:", file);
     const { valid, error } = validatePdfFile(file);
     if (!valid) { setUploadState('error'); setUploadError(error); return; }
 
@@ -56,15 +57,25 @@ export default function EmployerEvaluationForm() {
     const storageRef = ref(storage, path);
     const task = uploadBytesResumable(storageRef, file);
 
-    task.on('state_changed',
-      snap => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-      () => { setUploadState('error'); setUploadError('Upload failed. Please try again.'); },
-      async () => {
-        const url = await getDownloadURL(task.snapshot.ref);
-        setUploadedFile({ url, name: file.name });
-        setUploadState('done');
-      }
-    );
+    task.on(
+  'state_changed',
+  (snap) => {
+    console.log("PROGRESS:", snap.bytesTransferred, "/", snap.totalBytes);
+    setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+  },
+  (error) => {
+    console.error("UPLOAD ERROR:", error);
+    setUploadState('error');
+    setUploadError(error.message);
+  },
+  async () => {
+    console.log("UPLOAD COMPLETE");
+    const url = await getDownloadURL(task.snapshot.ref);
+    console.log("DOWNLOAD URL:", url);
+    setUploadedFile({ url, name: file.name });
+    setUploadState('done');
+  }
+);
   }
 
   function onInputChange(e) {
@@ -72,10 +83,14 @@ export default function EmployerEvaluationForm() {
   }
 
   function onDrop(e) {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-  }
+  e.preventDefault();
+  setDragOver(false);
+
+  const file = e.dataTransfer.files?.[0];
+  console.log("FILE DROPPED:", file);
+
+  if (file) handleFile(file);
+}
 
   async function handleSubmit(e) {
     e.preventDefault();
