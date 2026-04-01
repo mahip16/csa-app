@@ -21,8 +21,6 @@ const NAV_PAGES = [
   { label: 'Online Evaluation',   sub: 'Submit digital evaluation form for student',    accent: T.blue,    path: '/employer/evaluation', icon: <ReportIcon /> },
   { label: 'Submit Paper Evaluation',  sub: 'Scan paper report evaluations',        accent: T.success, path: '/employer/evaluation',  icon: <ClipboardIcon /> },
   { label: 'View Students',      sub: 'Review list of co-op students',           accent: T.purple,  path: '/employer/my-students', icon: <CheckIcon /> },
-  //{ label: 'Rejection Tracking',   sub: 'Track rejected placements',           accent: T.danger,  path: '/coordinator/rejections',   icon: <XIcon /> },
-  //{ label: 'Reporting Dashboard',  sub: 'Analytics and email reminders',       accent: T.yellow,  path: '/coordinator/reporting',    icon: <ReportIcon /> },
 ];
 
 function ClipboardIcon() {
@@ -90,41 +88,68 @@ export default function EmployerDashboard() {
     }
   }, [user]);
 
-  async function fetchStats() {
-    if (!user) return;
+ async function fetchStats() {
+  if (!user) return;
 
-    try {
-      const q = query(
-        collection(db, 'students'),
-        where('employerId', '==', user.uid)
-      );
+  try {
+    const studentsQuery = query(
+      collection(db, 'students'),
+      where('employerId', '==', user.uid)
+    );
 
-      const [appSnap, studSnap] = await Promise.all([
-        getDocs(q)        
-      ]);
-      //const apps  = appSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const studs = studSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setStats({
-        total:         studs.length,
-        pendingEvals:   studs.filter(s => !s.evaluationSubmitted).length,
-        submittedEvals: studs.filter(s => s.evaluationSubmitted).length,
-        //rejected:      apps.filter(a => a.status === 'rejected').length,
-        //pendingReports: studs.filter(s => !s.reportSubmitted).length,
-        //pendingEvals:   studs.filter(s => !s.evaluationSubmitted).length,
-      });
-      const sorted = [...apps]
-        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-        .slice(0, 6)
-        .map(a => ({
-          name: a.name || a.studentName || 'Unknown',
-          action: a.status === 'accepted' ? 'Final acceptance granted' : a.status === 'provisional' ? 'Provisionally accepted' : a.status === 'rejected' ? 'Application rejected' : 'Application submitted',
-          type: a.status === 'accepted' ? 'success' : a.status === 'provisional' ? 'blue' : a.status === 'rejected' ? 'danger' : 'warning',
-          time: a.createdAt?.toDate ? a.createdAt.toDate().toLocaleDateString() : 'Recently',
-        }));
-      setRecentActivity(sorted);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    const appsQuery = query(
+      collection(db, 'applications'),
+      where('employerId', '==', user.uid)
+    );
+
+    const [appSnap, studSnap] = await Promise.all([
+      getDocs(appsQuery),
+      getDocs(studentsQuery),
+    ]);
+
+    const apps  = appSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const studs = studSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    setStats({
+      total: studs.length,
+      pendingEvals: studs.filter(s => !s.evaluationSubmitted).length,
+      submittedEvals: studs.filter(s => s.evaluationSubmitted).length,
+    });
+
+    const sorted = (apps || [])
+      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+      .slice(0, 6)
+      .map(a => ({
+        name: a.name || a.studentName || 'Unknown',
+        action:
+          a.status === 'accepted'
+            ? 'Final acceptance granted'
+            : a.status === 'provisional'
+            ? 'Provisionally accepted'
+            : a.status === 'rejected'
+            ? 'Application rejected'
+            : 'Application submitted',
+        type:
+          a.status === 'accepted'
+            ? 'success'
+            : a.status === 'provisional'
+            ? 'blue'
+            : a.status === 'rejected'
+            ? 'danger'
+            : 'warning',
+        time: a.createdAt?.toDate
+          ? a.createdAt.toDate().toLocaleDateString()
+          : 'Recently',
+      }));
+
+    setRecentActivity(sorted);
+
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setLoading(false);
   }
+}
 
   async function handleLogout() {
     await signOut(auth);
@@ -135,9 +160,6 @@ export default function EmployerDashboard() {
     { label: 'My Students',            value: stats.total,         accent: T.blue   },
     { label: 'Evaluations Submitted',  value: stats.submittedEvals,   accent: T.success },
     { label: 'Evaluations Pending',       value: stats.pendingEvals, accent: T.warning},
-    //{ label: 'Rejected',               value: stats.rejected,      accent: T.danger },
-    //{ label: 'Reports Pending',        value: stats.pendingReports,accent: T.purple },
-    //{ label: 'Evaluations Pending',    value: stats.pendingEvals,  accent: T.warning},
   ];
 
   return (
@@ -146,10 +168,10 @@ export default function EmployerDashboard() {
       {/* Navbar */}
       <nav style={{ backgroundColor: '#fff', borderBottom: `1px solid ${T.cardBorder}`, padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: T.yellow, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg fill="#ffff" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor:"rgb(238, 242, 251)" , display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg fill="#3b4fa8" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"
             width="20px" height="20px" 
-            stroke="#f5a623" stroke-width="9.728"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <g> <path d="M470.948,481.583V0H41.052v481.583H15.209V512h25.842H184.52H327.48h143.468h25.842v-30.417H470.948z M240.791,481.583 h-25.855v-70.117h25.855V481.583z M297.063,481.583h-25.855v-70.117h25.855V481.583z M440.531,481.583H327.48V381.049H184.52 v100.534H71.469V30.417h369.062V481.583z"></path> </g> </g> <g> <g> <rect x="100.114" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="310.935" width="30.417" height="35.821"></rect> </g> </g> </g></svg>
+            stroke="#3b4fa8" stroke-width="9.728"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <g> <path d="M470.948,481.583V0H41.052v481.583H15.209V512h25.842H184.52H327.48h143.468h25.842v-30.417H470.948z M240.791,481.583 h-25.855v-70.117h25.855V481.583z M297.063,481.583h-25.855v-70.117h25.855V481.583z M440.531,481.583H327.48V381.049H184.52 v100.534H71.469V30.417h369.062V481.583z"></path> </g> </g> <g> <g> <rect x="100.114" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="310.935" width="30.417" height="35.821"></rect> </g> </g> </g></svg>
                  </div>
           <span style={{ fontSize: '1rem', fontWeight: '700', color: T.textDark }}>Co-op Employer Portal</span>
         </div>
@@ -220,11 +242,10 @@ export default function EmployerDashboard() {
         </div>
 
         {/* Alert banner */}
-        {(stats.submittedEvals > 0 || stats.pendingEvals > 0) && (
+        {(stats.pendingEvals > 0) && (
           <div style={{ backgroundColor: 'rgba(217,119,6,0.07)', border: `1px solid rgba(217,119,6,0.25)`, borderRadius: '10px', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.warning} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <p style={{ fontSize: '0.85rem', color: T.warning, margin: 0, flex: 1 }}>
-              {stats.pendingReports > 0 && <><strong>{stats.pendingReports}</strong> student(s) have not submitted their work term report. </>}
               {stats.pendingEvals > 0 && <><strong>{stats.pendingEvals}</strong> employer evaluation(s) are outstanding.</>}
             </p>
             <button onClick={() => navigate('/employer/reporting')} style={{ padding: '0.45rem 1rem', borderRadius: '7px', border: `1.5px solid rgba(217,119,6,0.35)`, backgroundColor: 'rgba(217,119,6,0.1)', color: T.warning, fontSize: '0.82rem', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer' }}>
