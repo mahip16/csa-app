@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
@@ -6,21 +6,26 @@ const pageBg = 'linear-gradient(135deg, #dff0f7 0%, #eef4fb 30%, #fdf9ee 70%, #f
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { login, currentUser, role, loading: authLoading } = useAuth()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [focused, setFocused] = useState('')
+
+  useEffect(() => {
+    if (!authLoading && currentUser && role === 'student') {
+      navigate('/dashboard')
+    }
+  }, [authLoading, currentUser, role])
 
   async function handleLogin(e) {
     e.preventDefault()
     setError('')
-    setLoading(true)
+    setSubmitting(true)
     try {
       await login(email, password)
-      navigate('/dashboard')
     } catch (err) {
       if (['auth/user-not-found', 'auth/wrong-password', 'auth/invalid-credential'].includes(err.code)) {
         setError('Invalid email or password.')
@@ -32,7 +37,7 @@ export default function Login() {
         setError('Login failed. Please try again.')
       }
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -102,16 +107,16 @@ export default function Login() {
 
           <button
             type="submit"
-            disabled={loading || !email || !password}
+            disabled={submitting || !email || !password}
             style={{
               width: '100%', padding: '0.8rem', borderRadius: '8px', border: 'none',
-              backgroundColor: loading || !email || !password ? '#9baee0' : '#3b4fa8',
+              backgroundColor: submitting || !email || !password ? '#9baee0' : '#3b4fa8',
               color: '#fff', fontSize: '1rem', fontWeight: '700', fontFamily: 'inherit',
-              cursor: loading || !email || !password ? 'not-allowed' : 'pointer',
+              cursor: submitting || !email || !password ? 'not-allowed' : 'pointer',
               transition: 'background 0.15s',
             }}
           >
-            {loading ? 'Signing in...' : 'Sign in'}
+            {submitting ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
