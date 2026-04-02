@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { addDoc, collection } from 'firebase/firestore';
-import { db } from '../../firebase/firebase';
+import { db, auth } from '../../firebase/firebase';
 import { validatePdfFile } from '../../utils/validation';
 
 const pageBg = 'linear-gradient(135deg, #dff0f7 0%, #eef4fb 30%, #fdf9ee 70%, #fef8e1 100%)';
 
 export default function EmployerEvaluationForm() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [mode, setMode] = useState('form'); // 'form' or 'pdf'
+  // Read ?mode=pdf from the URL so the dashboard can deep-link to the PDF tab
+  const [mode, setMode] = useState(searchParams.get('mode') === 'pdf' ? 'pdf' : 'form');
 
   // form fields
   const [studentName, setStudentName] = useState('');
@@ -29,6 +31,16 @@ export default function EmployerEvaluationForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [focused, setFocused] = useState('');
+
+  // Reset upload state when switching modes so stale state doesn't carry over
+  function switchMode(key) {
+    setMode(key);
+    setUploadState('idle');
+    setUploadedFile(null);
+    setUploadError('');
+    setProgress(0);
+    setError('');
+  }
 
   const inputStyle = (name) => ({
     width: '100%',
@@ -57,8 +69,8 @@ export default function EmployerEvaluationForm() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('upload_preset', 'eval_upload'); // Cloudinary preset
-    formData.append('folder', 'evaluations'); // folder in Cloudinary
+    formData.append('upload_preset', 'eval_upload');
+    formData.append('folder', 'evaluations');
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', 'https://api.cloudinary.com/v1_1/dpde2xmkz/raw/upload');
@@ -73,6 +85,11 @@ export default function EmployerEvaluationForm() {
     xhr.onload = () => {
       if (xhr.status === 200) {
         const data = JSON.parse(xhr.responseText);
+        if (!data.secure_url) {
+          setUploadState('error');
+          setUploadError('Upload failed: no URL returned. Check your Cloudinary preset.');
+          return;
+        }
         setUploadedFile({ url: data.secure_url, name: file.name });
         setUploadState('done');
       } else {
@@ -108,16 +125,26 @@ export default function EmployerEvaluationForm() {
       return;
     }
 
-    if (mode === 'pdf' && !uploadedFile) {
-      setError('Please upload a PDF evaluation first.');
-      return;
+    if (mode === 'pdf') {
+      if (uploadState === 'uploading') {
+        setError('Please wait for the PDF to finish uploading before submitting.');
+        return;
+      }
+      if (uploadState !== 'done' || !uploadedFile?.url) {
+        setError('Please upload a PDF evaluation first.');
+        return;
+      }
     }
 
     setLoading(true);
     try {
+      // Save employerId so the dashboard can filter evaluations by this employer
+      const employerId = auth.currentUser?.uid || null;
+
       await addDoc(collection(db, 'evaluations'), {
         studentName,
         company,
+        employerId,
         submissionType: mode,
         ...(mode === 'form'
           ? { rating, skills, communication, comments }
@@ -142,7 +169,7 @@ export default function EmployerEvaluationForm() {
         {/* Toggle */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', backgroundColor: '#f8fafc', border: '1.5px solid #dde3ed', borderRadius: '10px', padding: '0.3rem' }}>
           {[{ key: 'form', label: 'Fill Out Form' }, { key: 'pdf', label: 'Upload PDF' }].map(opt => (
-            <button key={opt.key} type="button" onClick={() => setMode(opt.key)} style={{ flex: 1, padding: '0.55rem', borderRadius: '7px', border: 'none', fontFamily: 'inherit', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', backgroundColor: mode === opt.key ? '#3b4fa8' : 'transparent', color: mode === opt.key ? '#fff' : '#8a95a8', transition: 'all 0.15s' }}>
+            <button key={opt.key} type="button" onClick={() => switchMode(opt.key)} style={{ flex: 1, padding: '0.55rem', borderRadius: '7px', border: 'none', fontFamily: 'inherit', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', backgroundColor: mode === opt.key ? '#3b4fa8' : 'transparent', color: mode === opt.key ? '#fff' : '#8a95a8', transition: 'all 0.15s' }}>
               {opt.label}
             </button>
           ))}
@@ -199,12 +226,7 @@ export default function EmployerEvaluationForm() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, color: '#16a34a', fontSize: '0.85rem' }}>PDF uploaded successfully</div>
                     <div style={{ fontSize: '0.75rem', color: '#8a95a8' }}>{uploadedFile?.name}</div>
-                    <a
-                      href={uploadedFile?.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: '0.8rem', color: '#3b4fa8', textDecoration: 'underline' }}
-                    >
+                    <a href={uploadedFile?.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: '#3b4fa8', textDecoration: 'underline' }}>
                       View PDF
                     </a>
                   </div>
@@ -231,8 +253,8 @@ export default function EmployerEvaluationForm() {
             </div>
           )}
 
-          <button type="submit" disabled={loading} style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: 'none', backgroundColor: loading ? '#9baee0' : '#3b4fa8', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', marginTop: '0.5rem' }}>
-            {loading ? 'Submitting...' : 'Submit Evaluation'}
+          <button type="submit" disabled={loading || uploadState === 'uploading'} style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: 'none', backgroundColor: loading || uploadState === 'uploading' ? '#9baee0' : '#3b4fa8', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: loading || uploadState === 'uploading' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', marginTop: '0.5rem' }}>
+            {loading ? 'Submitting...' : uploadState === 'uploading' ? 'Uploading PDF...' : 'Submit Evaluation'}
           </button>
         </form>
 

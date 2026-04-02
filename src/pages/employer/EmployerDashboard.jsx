@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../../firebase/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
 
 const T = {
   pageBg: 'linear-gradient(135deg, #dff0f7 0%, #eef4fb 30%, #fdf9ee 70%, #fef8e1 100%)',
@@ -17,27 +16,23 @@ const T = {
   purple: '#7c3aed', purpleBg: 'rgba(124,58,237,0.08)', purpleBorder: 'rgba(124,58,237,0.2)',
 };
 
-const NAV_PAGES = [
-  { label: 'Online Evaluation',   sub: 'Submit digital evaluation form for student',    accent: T.blue,    path: '/employer/evaluation', icon: <ReportIcon /> },
-  { label: 'Submit Paper Evaluation',  sub: 'Scan paper report evaluations',        accent: T.success, path: '/employer/evaluation',  icon: <ClipboardIcon /> },
-  { label: 'View Students',      sub: 'Review list of co-op students',           accent: T.purple,  path: '/employer/my-students', icon: <CheckIcon /> },
-];
-
 function ClipboardIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M17 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>;
-}
-function ChartIcon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
 }
 function CheckIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 }
-function XIcon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-}
 function ReportIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
 }
+
+// Fixed: unique paths — "Submit Paper Evaluation" deep-links to ?mode=pdf
+// Fixed: key by label so React never sees duplicate keys
+const NAV_PAGES = [
+  { label: 'Online Evaluation',       sub: 'Submit digital evaluation form for student', accent: T.blue,    path: '/employer/evaluation',          icon: <ReportIcon /> },
+  { label: 'Submit Paper Evaluation', sub: 'Scan paper report evaluations',              accent: T.success, path: '/employer/evaluation?mode=pdf', icon: <ClipboardIcon /> },
+  { label: 'View Students',           sub: 'Review list of co-op students',              accent: T.purple,  path: '/employer/my-students',         icon: <CheckIcon /> },
+];
 
 function StatCard({ label, value, accent, loading }) {
   return (
@@ -48,21 +43,6 @@ function StatCard({ label, value, accent, loading }) {
   );
 }
 
-function Badge({ type, children }) {
-  const map = {
-    success: { bg: T.successBg, border: T.successBorder, color: T.success },
-    danger:  { bg: T.dangerBg,  border: T.dangerBorder,  color: T.danger  },
-    warning: { bg: T.warningBg, border: T.warningBorder, color: T.warning  },
-    blue:    { bg: T.blueLight, border: T.blueBorder,     color: T.blue    },
-  };
-  const c = map[type] || { bg: '#f1f3f7', border: '#dde3ed', color: T.textMuted };
-  return (
-    <span style={{ display: 'inline-block', padding: '0.2rem 0.65rem', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', backgroundColor: c.bg, border: `1px solid ${c.border}`, color: c.color }}>
-      {children}
-    </span>
-  );
-}
-
 export default function EmployerDashboard() {
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
@@ -70,7 +50,7 @@ export default function EmployerDashboard() {
   const [recentActivity, setRecentActivity] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { 
+  useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
         navigate('/employer/login');
@@ -78,78 +58,60 @@ export default function EmployerDashboard() {
         setUser(u);
       }
     });
-
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchStats();
-    }
+    if (user) fetchStats();
   }, [user]);
 
- async function fetchStats() {
-  if (!user) return;
+  async function fetchStats() {
+    if (!user) return;
+    try {
+      // Fixed: query 'evaluations' filtered by employerId (now saved by EvaluationForm)
+      // Fixed: query 'users' with role='student' — there is no separate 'students' collection
+      const evalsQuery = query(
+        collection(db, 'evaluations'),
+        where('employerId', '==', user.uid)
+      );
+      const studentsQuery = query(
+        collection(db, 'users'),
+        where('role', '==', 'student')
+      );
 
-  try {
-    const studentsQuery = query(
-      collection(db, 'students'),
-      where('employerId', '==', user.uid)
-    );
+      const [evalSnap, studentSnap] = await Promise.all([
+        getDocs(evalsQuery),
+        getDocs(studentsQuery),
+      ]);
 
-    const appsQuery = query(
-      collection(db, 'applications'),
-      where('employerId', '==', user.uid)
-    );
+      const evals = evalSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const students = studentSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const [appSnap, studSnap] = await Promise.all([
-      getDocs(appsQuery),
-      getDocs(studentsQuery),
-    ]);
+      const evaluatedNames = new Set(evals.map(e => e.studentName?.toLowerCase().trim()));
 
-    const apps  = appSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const studs = studSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setStats({
+        total: students.length,
+        submittedEvals: evals.length,
+        pendingEvals: Math.max(0, students.length - evaluatedNames.size),
+      });
 
-    setStats({
-      total: studs.length,
-      pendingEvals: studs.filter(s => !s.evaluationSubmitted).length,
-      submittedEvals: studs.filter(s => s.evaluationSubmitted).length,
-    });
+      // Recent activity = most recent evaluations this employer submitted
+      const sorted = [...evals]
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, 6)
+        .map(e => ({
+          name: e.studentName || 'Unknown',
+          action: e.submissionType === 'pdf' ? 'PDF evaluation submitted' : 'Online evaluation submitted',
+          time: e.createdAt ? new Date(e.createdAt).toLocaleDateString() : 'Recently',
+        }));
 
-    const sorted = (apps || [])
-      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-      .slice(0, 6)
-      .map(a => ({
-        name: a.name || a.studentName || 'Unknown',
-        action:
-          a.status === 'accepted'
-            ? 'Final acceptance granted'
-            : a.status === 'provisional'
-            ? 'Provisionally accepted'
-            : a.status === 'rejected'
-            ? 'Application rejected'
-            : 'Application submitted',
-        type:
-          a.status === 'accepted'
-            ? 'success'
-            : a.status === 'provisional'
-            ? 'blue'
-            : a.status === 'rejected'
-            ? 'danger'
-            : 'warning',
-        time: a.createdAt?.toDate
-          ? a.createdAt.toDate().toLocaleDateString()
-          : 'Recently',
-      }));
-
-    setRecentActivity(sorted);
-
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setLoading(false);
+      setRecentActivity(sorted);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   async function handleLogout() {
     await signOut(auth);
@@ -157,9 +119,9 @@ export default function EmployerDashboard() {
   }
 
   const STATS = [
-    { label: 'My Students',            value: stats.total,         accent: T.blue   },
-    { label: 'Evaluations Submitted',  value: stats.submittedEvals,   accent: T.success },
-    { label: 'Evaluations Pending',       value: stats.pendingEvals, accent: T.warning},
+    { label: 'My Students',           value: stats.total,          accent: T.blue    },
+    { label: 'Evaluations Submitted', value: stats.submittedEvals, accent: T.success },
+    { label: 'Evaluations Pending',   value: stats.pendingEvals,   accent: T.warning },
   ];
 
   return (
@@ -168,11 +130,41 @@ export default function EmployerDashboard() {
       {/* Navbar */}
       <nav style={{ backgroundColor: '#fff', borderBottom: `1px solid ${T.cardBorder}`, padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor:"rgb(238, 242, 251)" , display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg fill="#3b4fa8" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"
-            width="20px" height="20px" 
-            stroke="#3b4fa8" stroke-width="9.728"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g> <g> <path d="M470.948,481.583V0H41.052v481.583H15.209V512h25.842H184.52H327.48h143.468h25.842v-30.417H470.948z M240.791,481.583 h-25.855v-70.117h25.855V481.583z M297.063,481.583h-25.855v-70.117h25.855V481.583z M440.531,481.583H327.48V381.049H184.52 v100.534H71.469V30.417h369.062V481.583z"></path> </g> </g> <g> <g> <rect x="100.114" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="56.779" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="120.32" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="183.852" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="247.393" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="100.114" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="156.386" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="212.657" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="268.929" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="325.201" y="310.935" width="30.417" height="35.821"></rect> </g> </g> <g> <g> <rect x="381.473" y="310.935" width="30.417" height="35.821"></rect> </g> </g> </g></svg>
-                 </div>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: 'rgb(238, 242, 251)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg fill="#3b4fa8" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" width="20px" height="20px" stroke="#3b4fa8" strokeWidth="9.728">
+              <g><g><path d="M470.948,481.583V0H41.052v481.583H15.209V512h25.842H184.52H327.48h143.468h25.842v-30.417H470.948z M240.791,481.583 h-25.855v-70.117h25.855V481.583z M297.063,481.583h-25.855v-70.117h25.855V481.583z M440.531,481.583H327.48V381.049H184.52 v100.534H71.469V30.417h369.062V481.583z"/></g></g>
+              <g><g><rect x="100.114" y="56.779" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="156.386" y="56.779" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="212.657" y="56.779" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="100.114" y="120.32" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="156.386" y="120.32" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="212.657" y="120.32" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="268.929" y="56.779" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="325.201" y="56.779" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="268.929" y="120.32" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="325.201" y="120.32" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="381.473" y="56.779" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="381.473" y="120.32" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="100.114" y="183.852" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="156.386" y="183.852" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="212.657" y="183.852" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="268.929" y="183.852" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="325.201" y="183.852" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="381.473" y="183.852" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="100.114" y="247.393" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="156.386" y="247.393" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="212.657" y="247.393" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="268.929" y="247.393" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="325.201" y="247.393" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="381.473" y="247.393" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="100.114" y="310.935" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="156.386" y="310.935" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="212.657" y="310.935" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="268.929" y="310.935" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="325.201" y="310.935" width="30.417" height="35.821"/></g></g>
+              <g><g><rect x="381.473" y="310.935" width="30.417" height="35.821"/></g></g>
+            </svg>
+          </div>
           <span style={{ fontSize: '1rem', fontWeight: '700', color: T.textDark }}>Co-op Employer Portal</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -203,14 +195,14 @@ export default function EmployerDashboard() {
           <div style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', padding: '1.5rem', boxShadow: T.cardShadow }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
               <h2 style={{ fontSize: '0.95rem', fontWeight: '700', color: T.textDark, margin: 0 }}>Recent Activity</h2>
-              <span style={{ fontSize: '0.75rem', color: T.textMuted }}>Latest changes</span>
+              <span style={{ fontSize: '0.75rem', color: T.textMuted }}>Latest submissions</span>
             </div>
             {recentActivity.length === 0 && !loading ? (
-              <p style={{ textAlign: 'center', color: T.textMuted, fontSize: '0.85rem', padding: '2rem 0' }}>No recent activity.</p>
+              <p style={{ textAlign: 'center', color: T.textMuted, fontSize: '0.85rem', padding: '2rem 0' }}>No evaluations submitted yet.</p>
             ) : recentActivity.map((a, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0', borderBottom: i < recentActivity.length - 1 ? `1px solid ${T.cardBorder}` : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, backgroundColor: a.type === 'success' ? T.success : a.type === 'danger' ? T.danger : a.type === 'blue' ? T.blue : T.warning }} />
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, backgroundColor: T.success }} />
                   <div>
                     <div style={{ fontSize: '0.85rem', fontWeight: '600', color: T.textDark }}>{a.name}</div>
                     <div style={{ fontSize: '0.75rem', color: T.textMuted }}>{a.action}</div>
@@ -226,7 +218,7 @@ export default function EmployerDashboard() {
             <h2 style={{ fontSize: '0.95rem', fontWeight: '700', color: T.textDark, margin: '0 0 1.25rem 0' }}>Quick Navigation</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               {NAV_PAGES.map(p => (
-                <div key={p.path} onClick={() => navigate(p.path)}
+                <div key={p.label} onClick={() => navigate(p.path)}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', padding: '0.75rem 1rem', backgroundColor: '#f8fafc', border: `1px solid ${T.cardBorder}`, borderLeft: `3px solid ${p.accent}`, borderRadius: '8px', cursor: 'pointer', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f0f4ff'}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = '#f8fafc'}>
@@ -242,14 +234,14 @@ export default function EmployerDashboard() {
         </div>
 
         {/* Alert banner */}
-        {(stats.pendingEvals > 0) && (
+        {stats.pendingEvals > 0 && (
           <div style={{ backgroundColor: 'rgba(217,119,6,0.07)', border: `1px solid rgba(217,119,6,0.25)`, borderRadius: '10px', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.warning} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <p style={{ fontSize: '0.85rem', color: T.warning, margin: 0, flex: 1 }}>
-              {stats.pendingEvals > 0 && <><strong>{stats.pendingEvals}</strong> employer evaluation(s) are outstanding.</>}
+              <strong>{stats.pendingEvals}</strong> student evaluation(s) may still be outstanding.
             </p>
-            <button onClick={() => navigate('/employer/reporting')} style={{ padding: '0.45rem 1rem', borderRadius: '7px', border: `1.5px solid rgba(217,119,6,0.35)`, backgroundColor: 'rgba(217,119,6,0.1)', color: T.warning, fontSize: '0.82rem', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer' }}>
-              Send Reminders
+            <button onClick={() => navigate('/employer/evaluation')} style={{ padding: '0.45rem 1rem', borderRadius: '7px', border: `1.5px solid rgba(217,119,6,0.35)`, backgroundColor: 'rgba(217,119,6,0.1)', color: T.warning, fontSize: '0.82rem', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer' }}>
+              Submit Evaluation
             </button>
           </div>
         )}
