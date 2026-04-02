@@ -62,22 +62,36 @@ function PdfModal({ url, name, onClose }) {
 
 export default function EvaluationTracking() {
   const navigate = useNavigate();
-  const [students,  setStudents]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [activeTab, setActiveTab] = useState('reports');
-  const [search,    setSearch]    = useState('');
-  const [pdfModal,  setPdfModal]  = useState(null); // { url, name } | null
+  const [students,    setStudents]    = useState([]);
+  const [evalsByName, setEvalsByName] = useState({}); // map: studentName.toLowerCase() → evaluation doc
+  const [loading,     setLoading]     = useState(true);
+  const [activeTab,   setActiveTab]   = useState('reports');
+  const [search,      setSearch]      = useState('');
+  const [pdfModal,    setPdfModal]    = useState(null); // { url, name } | null
 
-  useEffect(() => { fetchStudents(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  async function fetchStudents() {
+  async function fetchData() {
     try {
-      // Read from 'users' collection — only students (role === 'student')
-      const snap = await getDocs(collection(db, 'users'));
-      const all  = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setStudents(all.filter(u => u.role === 'student'));
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+      // Fetch students from users collection
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const allUsers  = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setStudents(allUsers.filter(u => u.role === 'student'));
+
+      // Fetch all evaluations and index by studentName (lowercased) for easy lookup
+      const evalsSnap = await getDocs(collection(db, 'evaluations'));
+      const map = {};
+      evalsSnap.docs.forEach(d => {
+        const data = d.data();
+        const key  = (data.studentName || '').toLowerCase().trim();
+        if (key) map[key] = { id: d.id, ...data };
+      });
+      setEvalsByName(map);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function markSubmitted(studentId, field) {
@@ -93,14 +107,16 @@ export default function EvaluationTracking() {
 
   const total       = students.length;
   const withReports = students.filter(s => s.reportSubmitted).length;
-  const withEvals   = students.filter(s => s.evaluationSubmitted).length;
+  // For evaluations received, count students who have a matching evaluation doc
+  const withEvals   = students.filter(s => evalsByName[(s.name || '').toLowerCase().trim()]).length;
+
   const pct = (n, d) => d === 0 ? 0 : Math.round((n / d) * 100);
 
   const isReportTab  = activeTab === 'reports';
-  const submittedKey = isReportTab ? 'reportSubmitted'   : 'evaluationSubmitted';
-  const deadlineKey  = isReportTab ? 'reportDeadline'    : 'evaluationDeadline';
-  const urlKey       = isReportTab ? 'reportUrl'         : 'evaluationUrl';
-  const nameKey      = isReportTab ? 'reportName'        : 'evaluationName';
+  const submittedKey = isReportTab ? 'reportSubmitted' : 'evaluationSubmitted';
+  const deadlineKey  = isReportTab ? 'reportDeadline'  : 'evaluationDeadline';
+  const urlKey       = isReportTab ? 'reportUrl'       : 'evaluationUrl';
+  const nameKey      = isReportTab ? 'reportName'      : 'evaluationName';
 
   function isOverdue(s) {
     const dl = s[deadlineKey];
@@ -112,10 +128,10 @@ export default function EvaluationTracking() {
   const navBtn = { background: 'transparent', border: `1.5px solid #e8edf5`, color: '#4a5568', padding: '0.45rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', fontFamily: 'inherit' };
 
   const STATS = [
-    { label: 'Active Students',      value: total,                              accent: T.blue    },
-    { label: 'Reports Submitted',    value: `${withReports} / ${total}`,        accent: T.success },
-    { label: 'Evaluations Received', value: `${withEvals} / ${total}`,          accent: '#7c3aed' },
-    { label: 'Outstanding Items',    value: students.filter(s => !s.reportSubmitted || !s.evaluationSubmitted).length, accent: T.danger },
+    { label: 'Active Students',      value: total,                                                                                             accent: T.blue    },
+    { label: 'Reports Submitted',    value: `${withReports} / ${total}`,                                                                       accent: T.success },
+    { label: 'Evaluations Received', value: `${withEvals} / ${total}`,                                                                         accent: '#7c3aed' },
+    { label: 'Outstanding Items',    value: students.filter(s => !s.reportSubmitted || !evalsByName[(s.name || '').toLowerCase().trim()]).length, accent: T.danger  },
   ];
 
   return (
@@ -183,8 +199,18 @@ export default function EvaluationTracking() {
                 const overdue   = isOverdue(s);
                 const deadline  = s[deadlineKey];
                 const dlStr     = deadline?.toDate ? deadline.toDate().toLocaleDateString() : deadline || '—';
-                const pdfUrl    = s[urlKey];
-                const pdfName   = s[nameKey] || (isReportTab ? 'work-term-report.pdf' : 'employer-evaluation.pdf');
+
+                // For the reports tab: read PDF from the student's user doc (reportUrl/reportName)
+                // For the evaluations tab: look up the matching evaluation doc by student name
+                let pdfUrl, pdfName;
+                if (isReportTab) {
+                  pdfUrl  = s[urlKey];
+                  pdfName = s[nameKey] || 'work-term-report.pdf';
+                } else {
+                  const evalDoc = evalsByName[(s.name || '').toLowerCase().trim()];
+                  pdfUrl  = evalDoc?.pdfUrl  || null;
+                  pdfName = evalDoc?.pdfName || 'employer-evaluation.pdf';
+                }
 
                 return (
                   <tr key={s.id}
@@ -203,12 +229,19 @@ export default function EvaluationTracking() {
                       {overdue && <div style={{ fontSize: '0.72rem', color: T.danger, marginTop: '0.15rem', fontWeight: '600' }}>Overdue</div>}
                     </td>
                     <td style={{ padding: '0.9rem 1.1rem' }}>
-                      <Badge type={submitted ? 'success' : overdue ? 'danger' : 'warning'}>
-                        {submitted ? 'Submitted' : overdue ? 'Overdue' : 'Pending'}
-                      </Badge>
+                      {/* For evaluations tab, derive submitted status from the evaluations collection */}
+                      {isReportTab ? (
+                        <Badge type={submitted ? 'success' : overdue ? 'danger' : 'warning'}>
+                          {submitted ? 'Submitted' : overdue ? 'Overdue' : 'Pending'}
+                        </Badge>
+                      ) : (
+                        <Badge type={pdfUrl ? 'success' : overdue ? 'danger' : 'warning'}>
+                          {pdfUrl ? 'Received' : overdue ? 'Overdue' : 'Pending'}
+                        </Badge>
+                      )}
                     </td>
 
-                    {/* PDF column */}
+                    {/* PDF column — now reads from evaluations collection for the Evaluations tab */}
                     <td style={{ padding: '0.9rem 1.1rem' }}>
                       {pdfUrl ? (
                         <button
@@ -227,15 +260,24 @@ export default function EvaluationTracking() {
 
                     {/* Actions column */}
                     <td style={{ padding: '0.9rem 1.1rem' }}>
-                      {!submitted ? (
-                        <button
-                          onClick={() => markSubmitted(s.id, submittedKey)}
-                          style={{ padding: '0.35rem 0.85rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.blueBorder}`, backgroundColor: T.blueLight, color: T.blue, fontFamily: 'inherit' }}
-                        >
-                          Mark Received
-                        </button>
+                      {isReportTab ? (
+                        !submitted ? (
+                          <button
+                            onClick={() => markSubmitted(s.id, submittedKey)}
+                            style={{ padding: '0.35rem 0.85rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.blueBorder}`, backgroundColor: T.blueLight, color: T.blue, fontFamily: 'inherit' }}
+                          >
+                            Mark Received
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.82rem', color: T.success, fontWeight: '600' }}>✓ Received</span>
+                        )
                       ) : (
-                        <span style={{ fontSize: '0.82rem', color: T.success, fontWeight: '600' }}>✓ Received</span>
+                        // For evaluations tab, status is driven by the evaluations collection — no manual override needed
+                        pdfUrl ? (
+                          <span style={{ fontSize: '0.82rem', color: T.success, fontWeight: '600' }}>✓ Received</span>
+                        ) : (
+                          <span style={{ fontSize: '0.82rem', color: T.textMuted }}>Awaiting submission</span>
+                        )
                       )}
                     </td>
                   </tr>
