@@ -22,34 +22,74 @@ function Badge({ type, children }) {
     muted:   { bg: '#f1f3f7',   border: '#dde3ed',        color: T.textMuted },
   };
   const c = map[type] || map.muted;
-  return <span style={{ display: 'inline-block', padding: '0.2rem 0.65rem', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', backgroundColor: c.bg, border: `1px solid ${c.border}`, color: c.color }}>{children}</span>;
+  return (
+    <span style={{ display: 'inline-block', padding: '0.2rem 0.65rem', borderRadius: '20px', fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', backgroundColor: c.bg, border: `1px solid ${c.border}`, color: c.color }}>
+      {children}
+    </span>
+  );
+}
+
+function PdfModal({ url, name, onClose }) {
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,31,75,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: '1.5rem' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{ backgroundColor: '#fff', borderRadius: '14px', width: '100%', maxWidth: '900px', height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 48px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: `1px solid ${T.cardBorder}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.purple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span style={{ fontSize: '0.92rem', fontWeight: '700', color: T.textDark }}>{name || 'Document'}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <a href={url} target="_blank" rel="noopener noreferrer"
+              style={{ padding: '0.4rem 0.9rem', borderRadius: '7px', fontSize: '0.8rem', fontWeight: '600', border: `1.5px solid ${T.purpleBorder}`, backgroundColor: T.purpleBg, color: T.purple, textDecoration: 'none' }}>
+              Open in new tab ↗
+            </a>
+            <button onClick={onClose}
+              style={{ padding: '0.4rem 0.9rem', borderRadius: '7px', fontSize: '0.8rem', fontWeight: '600', border: `1.5px solid ${T.cardBorder}`, backgroundColor: 'transparent', color: T.textMid, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Close
+            </button>
+          </div>
+        </div>
+        <iframe src={url} title={name || 'PDF'} style={{ flex: 1, border: 'none', width: '100%' }} />
+      </div>
+    </div>
+  );
 }
 
 export default function EvaluationTracking() {
   const navigate = useNavigate();
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [students,  setStudents]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState('reports');
-  const [search, setSearch]     = useState('');
+  const [search,    setSearch]    = useState('');
+  const [pdfModal,  setPdfModal]  = useState(null); // { url, name } | null
 
   useEffect(() => { fetchStudents(); }, []);
 
   async function fetchStudents() {
     try {
-      const snap = await getDocs(collection(db, 'students'));
-      setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Read from 'users' collection — only students (role === 'student')
+      const snap = await getDocs(collection(db, 'users'));
+      const all  = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setStudents(all.filter(u => u.role === 'student'));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
 
   async function markSubmitted(studentId, field) {
     try {
-      await updateDoc(doc(db, 'students', studentId), { [field]: true, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'users', studentId), { [field]: true, updatedAt: serverTimestamp() });
       setStudents(prev => prev.map(s => s.id === studentId ? { ...s, [field]: true } : s));
     } catch (err) { console.error(err); }
   }
 
-  const filtered = students.filter(s => !search || [s.name, s.studentId, s.email].join(' ').toLowerCase().includes(search.toLowerCase()));
+  const filtered = students.filter(s =>
+    !search || [s.name, s.studentId, s.email].join(' ').toLowerCase().includes(search.toLowerCase())
+  );
 
   const total       = students.length;
   const withReports = students.filter(s => s.reportSubmitted).length;
@@ -57,8 +97,10 @@ export default function EvaluationTracking() {
   const pct = (n, d) => d === 0 ? 0 : Math.round((n / d) * 100);
 
   const isReportTab  = activeTab === 'reports';
-  const submittedKey = isReportTab ? 'reportSubmitted' : 'evaluationSubmitted';
-  const deadlineKey  = isReportTab ? 'reportDeadline'  : 'evaluationDeadline';
+  const submittedKey = isReportTab ? 'reportSubmitted'   : 'evaluationSubmitted';
+  const deadlineKey  = isReportTab ? 'reportDeadline'    : 'evaluationDeadline';
+  const urlKey       = isReportTab ? 'reportUrl'         : 'evaluationUrl';
+  const nameKey      = isReportTab ? 'reportName'        : 'evaluationName';
 
   function isOverdue(s) {
     const dl = s[deadlineKey];
@@ -70,10 +112,10 @@ export default function EvaluationTracking() {
   const navBtn = { background: 'transparent', border: `1.5px solid #e8edf5`, color: '#4a5568', padding: '0.45rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', fontFamily: 'inherit' };
 
   const STATS = [
-    { label: 'Active Students',    value: total,                             accent: T.blue   },
-    { label: 'Reports Submitted',  value: `${withReports} / ${total}`,       accent: T.success},
-    { label: 'Evaluations Received',value:`${withEvals} / ${total}`,         accent: T.purple },
-    { label: 'Outstanding Items',  value: students.filter(s => !s.reportSubmitted || !s.evaluationSubmitted).length, accent: T.danger },
+    { label: 'Active Students',      value: total,                              accent: T.blue    },
+    { label: 'Reports Submitted',    value: `${withReports} / ${total}`,        accent: T.success },
+    { label: 'Evaluations Received', value: `${withEvals} / ${total}`,          accent: '#7c3aed' },
+    { label: 'Outstanding Items',    value: students.filter(s => !s.reportSubmitted || !s.evaluationSubmitted).length, accent: T.danger },
   ];
 
   return (
@@ -84,7 +126,10 @@ export default function EvaluationTracking() {
         <span style={{ width: '1px', height: '20px', backgroundColor: T.cardBorder }} />
         <h1 style={{ fontSize: '1rem', fontWeight: '700', color: T.textDark, margin: 0 }}>Evaluation Tracking</h1>
         <div style={{ marginLeft: 'auto' }}>
-          <input style={{ backgroundColor: '#f8fafc', border: '1.5px solid #dde3ed', color: T.textDark, borderRadius: '8px', padding: '0.5rem 0.9rem', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', width: '240px' }} placeholder="Search students..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input
+            style={{ backgroundColor: '#f8fafc', border: '1.5px solid #dde3ed', color: T.textDark, borderRadius: '8px', padding: '0.5rem 0.9rem', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', width: '240px' }}
+            placeholder="Search students..." value={search} onChange={e => setSearch(e.target.value)}
+          />
         </div>
       </nav>
 
@@ -110,9 +155,10 @@ export default function EvaluationTracking() {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', borderBottom: `2px solid ${T.cardBorder}`, marginBottom: '0' }}>
+        <div style={{ display: 'flex', borderBottom: `2px solid ${T.cardBorder}` }}>
           {[{ key: 'reports', label: 'Work Term Reports' }, { key: 'evaluations', label: 'Employer Evaluations' }].map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding: '0.65rem 1.4rem', fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer', border: 'none', background: 'transparent', fontFamily: 'inherit', color: activeTab === t.key ? T.blue : T.textMuted, borderBottom: activeTab === t.key ? `2px solid ${T.blue}` : '2px solid transparent', marginBottom: '-2px', transition: 'color 0.15s' }}>
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              style={{ padding: '0.65rem 1.4rem', fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer', border: 'none', background: 'transparent', fontFamily: 'inherit', color: activeTab === t.key ? T.blue : T.textMuted, borderBottom: activeTab === t.key ? `2px solid ${T.blue}` : '2px solid transparent', marginBottom: '-2px', transition: 'color 0.15s' }}>
               {t.label}
             </button>
           ))}
@@ -122,25 +168,30 @@ export default function EvaluationTracking() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f7fb' }}>
-                {['Student', 'Student ID', 'Employer', 'Deadline', isReportTab ? 'Report Status' : 'Evaluation Status', 'Actions'].map(h => (
+                {['Student', 'Student ID', 'Employer', 'Deadline', isReportTab ? 'Report Status' : 'Eval Status', 'PDF', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '0.85rem 1.1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: '700', color: T.textMuted, letterSpacing: '0.05em', textTransform: 'uppercase', borderBottom: `1px solid ${T.cardBorder}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>Loading...</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>Loading...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>No students found.</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>No students found.</td></tr>
               ) : filtered.map((s, i) => {
                 const submitted = s[submittedKey];
                 const overdue   = isOverdue(s);
                 const deadline  = s[deadlineKey];
                 const dlStr     = deadline?.toDate ? deadline.toDate().toLocaleDateString() : deadline || '—';
+                const pdfUrl    = s[urlKey];
+                const pdfName   = s[nameKey] || (isReportTab ? 'work-term-report.pdf' : 'employer-evaluation.pdf');
+
                 return (
-                  <tr key={s.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${T.cardBorder}` : 'none' }}
+                  <tr key={s.id}
+                    style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${T.cardBorder}` : 'none' }}
                     onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f7f9ff'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
+                  >
                     <td style={{ padding: '0.9rem 1.1rem' }}>
                       <div style={{ fontWeight: '600', color: T.textDark, fontSize: '0.88rem' }}>{s.name || '—'}</div>
                       <div style={{ fontSize: '0.75rem', color: T.textMuted }}>{s.email}</div>
@@ -156,13 +207,35 @@ export default function EvaluationTracking() {
                         {submitted ? 'Submitted' : overdue ? 'Overdue' : 'Pending'}
                       </Badge>
                     </td>
+
+                    {/* PDF column */}
+                    <td style={{ padding: '0.9rem 1.1rem' }}>
+                      {pdfUrl ? (
+                        <button
+                          onClick={() => setPdfModal({ url: pdfUrl, name: pdfName })}
+                          style={{ padding: '0.32rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.purpleBorder}`, backgroundColor: T.purpleBg, color: T.purple, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                          </svg>
+                          View PDF
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '0.78rem', color: T.textMuted, fontStyle: 'italic' }}>No file</span>
+                      )}
+                    </td>
+
+                    {/* Actions column */}
                     <td style={{ padding: '0.9rem 1.1rem' }}>
                       {!submitted ? (
-                        <button onClick={() => markSubmitted(s.id, submittedKey)} style={{ padding: '0.35rem 0.85rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.blueBorder}`, backgroundColor: T.blueLight, color: T.blue, fontFamily: 'inherit' }}>
+                        <button
+                          onClick={() => markSubmitted(s.id, submittedKey)}
+                          style={{ padding: '0.35rem 0.85rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.blueBorder}`, backgroundColor: T.blueLight, color: T.blue, fontFamily: 'inherit' }}
+                        >
                           Mark Received
                         </button>
                       ) : (
-                        <span style={{ fontSize: '0.82rem', color: T.success, fontWeight: '600' }}>Received</span>
+                        <span style={{ fontSize: '0.82rem', color: T.success, fontWeight: '600' }}>✓ Received</span>
                       )}
                     </td>
                   </tr>
@@ -172,6 +245,8 @@ export default function EvaluationTracking() {
           </table>
         </div>
       </div>
+
+      {pdfModal && <PdfModal url={pdfModal.url} name={pdfModal.name} onClose={() => setPdfModal(null)} />}
     </div>
   );
 }

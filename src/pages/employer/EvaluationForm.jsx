@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { addDoc, collection } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../firebase/firebase';
+import { db } from '../../firebase/firebase';
 import { validatePdfFile } from '../../utils/validation';
 
 const pageBg = 'linear-gradient(135deg, #dff0f7 0%, #eef4fb 30%, #fdf9ee 70%, #fef8e1 100%)';
@@ -44,27 +43,50 @@ export default function EmployerEvaluationForm() {
     outline: 'none',
   });
 
-  async function handleFile(file) {
+  function handleFile(file) {
     const { valid, error } = validatePdfFile(file);
-    if (!valid) { setUploadState('error'); setUploadError(error); return; }
+    if (!valid) {
+      setUploadState('error');
+      setUploadError(error);
+      return;
+    }
 
     setUploadState('uploading');
     setProgress(0);
     setUploadError('');
 
-    const path = `evaluations/${Date.now()}_${file.name}`;
-    const storageRef = ref(storage, path);
-    const task = uploadBytesResumable(storageRef, file);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', 'eval_upload'); // Cloudinary preset
+    formData.append('folder', 'evaluations'); // folder in Cloudinary
 
-    task.on('state_changed',
-      snap => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-      () => { setUploadState('error'); setUploadError('Upload failed. Please try again.'); },
-      async () => {
-        const url = await getDownloadURL(task.snapshot.ref);
-        setUploadedFile({ url, name: file.name });
-        setUploadState('done');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'https://api.cloudinary.com/v1_1/dpde2xmkz/raw/upload');
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        setProgress(percent);
       }
-    );
+    });
+
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        const data = JSON.parse(xhr.responseText);
+        setUploadedFile({ url: data.secure_url, name: file.name });
+        setUploadState('done');
+      } else {
+        setUploadState('error');
+        setUploadError('Upload failed. Please try again.');
+      }
+    };
+
+    xhr.onerror = () => {
+      setUploadState('error');
+      setUploadError('Upload failed. Please try again.');
+    };
+
+    xhr.send(formData);
   }
 
   function onInputChange(e) {
@@ -104,6 +126,7 @@ export default function EmployerEvaluationForm() {
       });
       navigate('/employer/dashboard');
     } catch (err) {
+      console.error(err);
       setError('Failed to submit evaluation. Please try again.');
     } finally {
       setLoading(false);
@@ -113,7 +136,6 @@ export default function EmployerEvaluationForm() {
   return (
     <div style={{ minHeight: '100vh', background: pageBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', 'Segoe UI', sans-serif", padding: '1rem' }}>
       <div style={{ backgroundColor: '#fff', border: '2px solid #3b4fa8', borderRadius: '16px', padding: '2.5rem', width: '100%', maxWidth: '460px', boxShadow: '0 4px 24px rgba(0,0,0,0.09)' }}>
-
         <h1 style={{ fontSize: '1.5rem', color: '#0f1f4b', fontWeight: 700 }}>Employer Evaluation Form</h1>
         <p style={{ fontSize: '0.9rem', color: '#8a95a8', marginBottom: '1.5rem' }}>Submit feedback for a co-op student</p>
 
@@ -177,6 +199,14 @@ export default function EmployerEvaluationForm() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, color: '#16a34a', fontSize: '0.85rem' }}>PDF uploaded successfully</div>
                     <div style={{ fontSize: '0.75rem', color: '#8a95a8' }}>{uploadedFile?.name}</div>
+                    <a
+                      href={uploadedFile?.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '0.8rem', color: '#3b4fa8', textDecoration: 'underline' }}
+                    >
+                      View PDF
+                    </a>
                   </div>
                 </div>
               ) : (
@@ -185,14 +215,15 @@ export default function EmployerEvaluationForm() {
                   onDragLeave={() => setDragOver(false)}
                   onDrop={onDrop}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '1.75rem', border: `2px dashed ${dragOver ? '#3b4fa8' : uploadState === 'error' ? '#dc2626' : '#c5daf0'}`, borderRadius: '10px', cursor: 'pointer', backgroundColor: dragOver ? 'rgba(59,79,168,0.07)' : uploadState === 'error' ? 'rgba(220,38,38,0.07)' : '#f8fafc' }}>
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={uploadState === 'error' ? '#dc2626' : '#3b4fa8'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="12" y1="18" x2="12" y2="12"/>
-                    <polyline points="9 15 12 12 15 15"/>
-                  </svg>
-                  {uploadState === 'idle' && <><span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f1f4b' }}>{dragOver ? 'Drop your PDF here' : 'Click or drag to upload PDF'}</span><span style={{ fontSize: '0.75rem', color: '#8a95a8' }}>PDF only · max 10 MB</span></>}
-                  {uploadState === 'uploading' && <><span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#3b4fa8' }}>Uploading... {progress}%</span><div style={{ width: '180px', height: '6px', backgroundColor: '#dde3ed', borderRadius: '3px', overflow: 'hidden' }}><div style={{ height: '100%', width: `${progress}%`, backgroundColor: '#3b4fa8', borderRadius: '3px' }} /></div></>}
+                  <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f1f4b' }}>
+                    {dragOver ? 'Drop your PDF here' : 'Click or drag to upload PDF'}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#8a95a8' }}>PDF only · max 10 MB</span>
+                  {uploadState === 'uploading' && (
+                    <div style={{ width: '100%', marginTop: '0.5rem', height: '6px', backgroundColor: '#dde3ed', borderRadius: '3px' }}>
+                      <div style={{ height: '100%', width: `${progress}%`, backgroundColor: '#3b4fa8', borderRadius: '3px' }} />
+                    </div>
+                  )}
                   {uploadState === 'error' && <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#dc2626' }}>{uploadError}</span>}
                   <input id="eval-pdf-upload" type="file" accept="application/pdf" style={{ display: 'none' }} onChange={onInputChange} />
                 </label>
