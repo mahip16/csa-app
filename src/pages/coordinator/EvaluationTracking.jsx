@@ -239,7 +239,7 @@ export default function EvaluationTracking() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f7fb' }}>
-                {['Student', 'Student ID', 'Employer', 'Deadline', isReportTab ? 'Report Status' : 'Eval Status', 'Eval', 'Actions'].map(h => (
+                {['Student', 'Student ID', 'Employer', 'Deadline', isReportTab ? 'Report Status' : 'Eval Status', isReportTab ? 'Report' : 'Eval', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '0.85rem 1.1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: '700', color: T.textMuted, letterSpacing: '0.05em', textTransform: 'uppercase', borderBottom: `1px solid ${T.cardBorder}` }}>{h}</th>
                 ))}
               </tr>
@@ -302,7 +302,19 @@ export default function EvaluationTracking() {
 
                     {/* PDF column — now reads from evaluations collection for the Evaluations tab */}
                     <td style={{ padding: '0.9rem 1.1rem' }}>
-                      {hasEvaluation ? (
+                      {isReportTab? (
+                        pdfUrl ? (
+                            <button
+                            onClick={() => setPdfModal({ url: pdfUrl, name: pdfName })}
+                            style={{ padding: '0.32rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.purpleBorder}`, backgroundColor: T.purpleBg, color: T.purple, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                          >
+                            View PDF
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: T.textMuted, fontStyle: 'italic' }}>No file</span>
+                        )
+                      ) : (
+                      hasEvaluation ? (
                         <button
                           onClick={() => {
                             if (isPdf) {
@@ -319,6 +331,7 @@ export default function EvaluationTracking() {
                         </button>
                       ) : (
                         <span style={{ fontSize: '0.78rem', color: T.textMuted, fontStyle: 'italic' }}>No file</span>
+                      )
                       )}
                     </td>
 
