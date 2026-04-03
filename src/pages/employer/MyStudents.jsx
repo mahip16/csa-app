@@ -28,16 +28,11 @@ export default function MyStudents() {
       const user = auth.currentUser;
       if (!user) return;
 
-      // Students are in the 'users' collection with role === 'student'
-      // If your app sets employerId on the student doc, filter by that too.
-      // For now we show all students (coordinator assigns them) — adjust the
-      // query below if you add an employerId field to student user docs.
       const studentsQuery = query(
         collection(db, 'users'),
         where('role', '==', 'student')
       );
 
-      // Also fetch evaluations this employer has submitted so we can show status
       const evalsQuery = query(
         collection(db, 'evaluations'),
         where('employerId', '==', user.uid)
