@@ -55,7 +55,7 @@ function App() {
               <ApplicationReview />
             </ProtectedRoute>
           }/>
-          <Route path="/coordinator/final" element={
+          <Route path="/coordinator/final-decisions" element={
             <ProtectedRoute role="coordinator">
               <FinalDecisions />
             </ProtectedRoute>
