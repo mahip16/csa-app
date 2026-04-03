@@ -9,7 +9,7 @@ export default function Register() {
   const navigate = useNavigate()
   const { register } = useAuth()
 
-  const [form, setForm] = useState({ name: '', studentId: '', email: '', password: '', confirmPassword: '' })
+  const [form, setForm] = useState({ name: '', studentId: '', email: '', password: '', confirmPassword: '', program: '', gpa: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [focused, setFocused] = useState('')
@@ -27,10 +27,13 @@ export default function Register() {
     if (!validateEmail(form.email)) return setError('Please enter a valid email address.')
     if (!validatePassword(form.password)) return setError('Password must be at least 6 characters.')
     if (form.password !== form.confirmPassword) return setError('Passwords do not match.')
+    if (!form.program.trim()) return setError('Program is required.')
+    const gpaNum = parseFloat(form.gpa)
+    if (isNaN(gpaNum) || gpaNum < 0 || gpaNum > 4.0) return setError('GPA must be a number between 0 and 4.0.')
 
     setLoading(true)
     try {
-      await register(form.email, form.password, form.name, form.studentId)
+      await register(form.email, form.password, form.name, form.studentId, form.program, form.gpa)
       navigate('/dashboard')
     } catch (err) {
       if (err.code === 'auth/email-already-in-use') {
@@ -61,14 +64,16 @@ export default function Register() {
   })
 
   const fields = [
-    { key: 'name',            label: 'Full name',       type: 'text',     placeholder: 'Jane Smith' },
-    { key: 'studentId',       label: 'Student ID',      type: 'text',     placeholder: '500123456 (9 digits)' },
-    { key: 'email',           label: 'Email address',   type: 'email',    placeholder: 'jane@torontomu.ca' },
-    { key: 'password',        label: 'Password',        type: 'password', placeholder: 'At least 6 characters' },
-    { key: 'confirmPassword', label: 'Confirm password',type: 'password', placeholder: 'Re-enter password' },
+    { key: 'name',            label: 'Full name',        type: 'text',     placeholder: 'Jane Smith' },
+    { key: 'studentId',       label: 'Student ID',       type: 'text',     placeholder: '500123456 (9 digits)' },
+    { key: 'email',           label: 'Email address',    type: 'email',    placeholder: 'jane@torontomu.ca' },
+    { key: 'program',         label: 'Program',          type: 'text',     placeholder: 'e.g. Computer Science' },
+    { key: 'gpa',             label: 'GPA',              type: 'number',   placeholder: 'e.g. 3.5' },
+    { key: 'password',        label: 'Password',         type: 'password', placeholder: 'At least 6 characters' },
+    { key: 'confirmPassword', label: 'Confirm password', type: 'password', placeholder: 'Re-enter password' },
   ]
 
-  const allFilled = Object.values(form).every(v => v.trim() !== '')
+  const allFilled = Object.values(form).every(v => v.toString().trim() !== '')
 
   return (
     <div style={{ minHeight: '100vh', background: pageBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', 'Segoe UI', sans-serif", padding: '2rem 1rem' }}>
@@ -103,6 +108,9 @@ export default function Register() {
                 onBlur={() => setFocused('')}
                 style={inputStyle(f.key)}
                 placeholder={f.placeholder}
+                step={f.key === 'gpa' ? '0.01' : undefined}
+                min={f.key === 'gpa' ? '0' : undefined}
+                max={f.key === 'gpa' ? '4.0' : undefined}
                 required
               />
             </div>

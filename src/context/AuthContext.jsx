@@ -20,14 +20,15 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const register = async (email, password, name, studentId) => {
+  const register = async (email, password, name, studentId, program, gpa) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password)
     const uid = userCredential.user.uid
     await setDoc(doc(db, "users", uid), {
-      name, studentId, email, role: "student", createdAt: new Date()
+      name, studentId, email, program, gpa: parseFloat(gpa), role: "student", createdAt: new Date()
     })
     await setDoc(doc(db, "applications", uid), {
-      name, studentId, email, status: "pending", submittedAt: new Date()
+      name, studentId, email, program, gpa: parseFloat(gpa), status: "pending", createdAt: new Date()
+
     })
   }
 
