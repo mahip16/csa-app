@@ -60,6 +60,60 @@ function PdfModal({ url, name, onClose }) {
   );
 }
 
+function FormModal({ data, onClose }) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(15,31,75,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 300,
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        backgroundColor: '#fff',
+        borderRadius: '14px',
+        width: '100%',
+        maxWidth: '500px',
+        padding: '1.5rem',
+        boxShadow: '0 8px 48px rgba(0,0,0,0.2)',
+        position: 'relative'
+      }}>
+
+        <h2>Evaluation Details</h2>
+        <button onClick={onClose} 
+          style={{ 
+            position: 'absolute', top: '1rem', right: '1rem', padding: '0.4rem 0.9rem', 
+            borderRadius: '7px', fontSize: '0.8rem', fontWeight: '600', 
+            border: `1.5px solid ${T.cardBorder}`, backgroundColor: 'transparent', 
+            color: T.textMid, cursor: 'pointer', fontFamily: 'inherit' }}>
+          Close
+        </button>
+
+
+        <p><strong>Rating:</strong> {data.rating}/5</p>
+        <p><strong>Technical Skills:</strong> {data.skills}/5</p>
+        <p><strong>Communication:</strong> {data.communication}/5</p>
+
+        <p><strong>Comments:</strong></p>
+        <div style={{
+          background: '#f8fafc',
+          padding: '0.8rem',
+          borderRadius: '8px'
+        }}>
+          {data.comments || 'No comments provided'}
+        </div>
+
+
+      </div>
+    </div>
+  );
+}
+
 export default function EvaluationTracking() {
   const navigate = useNavigate();
   const [students,    setStudents]    = useState([]);
@@ -68,6 +122,7 @@ export default function EvaluationTracking() {
   const [activeTab,   setActiveTab]   = useState('reports');
   const [search,      setSearch]      = useState('');
   const [pdfModal,    setPdfModal]    = useState(null); // { url, name } | null
+  const [formModal, setFormModal] = useState(null);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -184,7 +239,7 @@ export default function EvaluationTracking() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f7fb' }}>
-                {['Student', 'Student ID', 'Employer', 'Deadline', isReportTab ? 'Report Status' : 'Eval Status', 'PDF', 'Actions'].map(h => (
+                {['Student', 'Student ID', 'Employer', 'Deadline', isReportTab ? 'Report Status' : 'Eval Status', isReportTab ? 'Report' : 'Eval', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '0.85rem 1.1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: '700', color: T.textMuted, letterSpacing: '0.05em', textTransform: 'uppercase', borderBottom: `1px solid ${T.cardBorder}` }}>{h}</th>
                 ))}
               </tr>
@@ -198,6 +253,10 @@ export default function EvaluationTracking() {
                 const submitted = s[submittedKey];
                 const overdue   = isOverdue(s);
                 const deadline  = s[deadlineKey];
+                const evalDoc = evalsByName[(s.name || '').toLowerCase().trim()];
+                const hasEvaluation = !!evalDoc;
+                const isPdf = evalDoc?.submissionType === 'pdf';
+
                 const dlStr     = deadline?.toDate ? deadline.toDate().toLocaleDateString() : deadline || '—';
 
                 // For the reports tab: read PDF from the student's user doc (reportUrl/reportName)
@@ -207,7 +266,7 @@ export default function EvaluationTracking() {
                   pdfUrl  = s[urlKey];
                   pdfName = s[nameKey] || 'work-term-report.pdf';
                 } else {
-                  const evalDoc = evalsByName[(s.name || '').toLowerCase().trim()];
+                  //const evalDoc = evalsByName[(s.name || '').toLowerCase().trim()];
                   pdfUrl  = evalDoc?.pdfUrl  || null;
                   pdfName = evalDoc?.pdfName || 'employer-evaluation.pdf';
                 }
@@ -234,27 +293,45 @@ export default function EvaluationTracking() {
                         <Badge type={submitted ? 'success' : overdue ? 'danger' : 'warning'}>
                           {submitted ? 'Submitted' : overdue ? 'Overdue' : 'Pending'}
                         </Badge>
-                      ) : (
-                        <Badge type={pdfUrl ? 'success' : overdue ? 'danger' : 'warning'}>
-                          {pdfUrl ? 'Received' : overdue ? 'Overdue' : 'Pending'}
+                      ) : (                       
+                        <Badge type={hasEvaluation ? 'success' : overdue ? 'danger' : 'warning'}>
+                          {hasEvaluation ? 'Received' : overdue ? 'Overdue' : 'Pending'}
                         </Badge>
                       )}
                     </td>
 
                     {/* PDF column — now reads from evaluations collection for the Evaluations tab */}
                     <td style={{ padding: '0.9rem 1.1rem' }}>
-                      {pdfUrl ? (
+                      {isReportTab? (
+                        pdfUrl ? (
+                            <button
+                            onClick={() => setPdfModal({ url: pdfUrl, name: pdfName })}
+                            style={{ padding: '0.32rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.purpleBorder}`, backgroundColor: T.purpleBg, color: T.purple, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                          >
+                            View PDF
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: T.textMuted, fontStyle: 'italic' }}>No file</span>
+                        )
+                      ) : (
+                      hasEvaluation ? (
                         <button
-                          onClick={() => setPdfModal({ url: pdfUrl, name: pdfName })}
+                          onClick={() => {
+                            if (isPdf) {
+                              setPdfModal({ url: pdfUrl, name: pdfName });
+                            } else {
+                              setFormModal(evalDoc); }
+                            } }
                           style={{ padding: '0.32rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${T.purpleBorder}`, backgroundColor: T.purpleBg, color: T.purple, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                         >
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                           </svg>
-                          View PDF
+                          {isPdf ? 'View PDF' : 'View Evaluation'}
                         </button>
                       ) : (
                         <span style={{ fontSize: '0.78rem', color: T.textMuted, fontStyle: 'italic' }}>No file</span>
+                      )
                       )}
                     </td>
 
@@ -273,7 +350,7 @@ export default function EvaluationTracking() {
                         )
                       ) : (
                         // For evaluations tab, status is driven by the evaluations collection — no manual override needed
-                        pdfUrl ? (
+                        hasEvaluation ? (
                           <span style={{ fontSize: '0.82rem', color: T.success, fontWeight: '600' }}>✓ Received</span>
                         ) : (
                           <span style={{ fontSize: '0.82rem', color: T.textMuted }}>Awaiting submission</span>
@@ -289,6 +366,8 @@ export default function EvaluationTracking() {
       </div>
 
       {pdfModal && <PdfModal url={pdfModal.url} name={pdfModal.name} onClose={() => setPdfModal(null)} />}
+      {formModal && <FormModal data={formModal} onClose={() => setFormModal(null)} />}
+
     </div>
   );
 }
