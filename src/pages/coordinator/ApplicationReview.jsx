@@ -84,7 +84,6 @@ export default function ApplicationReview() {
   return (
     <div style={{ minHeight: '100vh', background: T.pageBg, fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
 
-      {/* Navbar */}
       <nav style={{ backgroundColor: '#fff', borderBottom: `1px solid ${T.cardBorder}`, padding: '0 2rem', display: 'flex', alignItems: 'center', gap: '1rem', height: '64px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <button style={navBtn} onClick={() => navigate('/coordinator/dashboard')}>Back to Dashboard</button>
         <span style={{ width: '1px', height: '20px', backgroundColor: T.cardBorder }} />
@@ -100,7 +99,6 @@ export default function ApplicationReview() {
           <p style={{ fontSize: '0.88rem', color: T.textMuted, marginTop: '0.3rem' }}>Review applicant eligibility and set provisional or final statuses.</p>
         </div>
 
-        {/* Filter tabs */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
           {STATUS_FILTERS.map(f => (
             <button key={f} onClick={() => setFilter(f)} style={{ padding: '0.4rem 1rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${filter === f ? T.blue : '#dde3ed'}`, backgroundColor: filter === f ? T.blueLight : '#fff', color: filter === f ? T.blue : T.textMid, transition: 'all 0.15s' }}>
@@ -109,21 +107,20 @@ export default function ApplicationReview() {
           ))}
         </div>
 
-        {/* Table */}
         <div style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', boxShadow: T.cardShadow, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f7fb' }}>
-                {['Name', 'Student ID', 'Email', 'Applied', 'Status', 'GPA', 'Actions'].map(h => (
+                {['Name', 'Student ID', 'Email', 'Applied', 'Status', 'GPA', 'Employer', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '0.85rem 1.1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: '700', color: T.textMuted, letterSpacing: '0.05em', textTransform: 'uppercase', borderBottom: `1px solid ${T.cardBorder}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>Loading applications...</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>Loading applications...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>No applications match your filters.</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: T.textMuted, fontSize: '0.88rem' }}>No applications match your filters.</td></tr>
               ) : filtered.map((app, i) => (
                 <tr key={app.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${T.cardBorder}` : 'none' }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f7f9ff'}
@@ -137,6 +134,13 @@ export default function ApplicationReview() {
                   <td style={{ padding: '0.9rem 1.1rem', fontSize: '0.85rem', color: T.textMuted }}>{app.createdAt?.toDate ? app.createdAt.toDate().toLocaleDateString() : '—'}</td>
                   <td style={{ padding: '0.9rem 1.1rem' }}><Badge type={statusType(app.status || 'pending')}>{app.status || 'Pending'}</Badge></td>
                   <td style={{ padding: '0.9rem 1.1rem', fontSize: '0.88rem', fontWeight: '600', color: app.gpa >= 2.7 ? T.success : T.danger }}>{app.gpa ?? '—'}</td>
+                  {/* --- NEW: employer column --- */}
+                  <td style={{ padding: '0.9rem 1.1rem', fontSize: '0.85rem', color: T.textMuted }}>
+                    {app.employerCompany
+                      ? <span style={{ color: T.textDark, fontWeight: '600' }}>{app.employerCompany}</span>
+                      : <span style={{ color: T.textMuted, fontStyle: 'italic' }}>Not reported</span>
+                    }
+                  </td>
                   <td style={{ padding: '0.9rem 1.1rem' }}>
                     {app.status !== 'accepted' && app.status !== 'rejected' && (
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -156,7 +160,6 @@ export default function ApplicationReview() {
         </div>
       </div>
 
-      {/* Modal */}
       {selected && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,31,75,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }} onClick={e => e.target === e.currentTarget && closeModal()}>
           <div style={{ backgroundColor: '#fff', borderRadius: '14px', padding: '2rem', width: '100%', maxWidth: '460px', boxShadow: '0 8px 40px rgba(0,0,0,0.15)', border: `2px solid ${actionType === 'reject' ? T.dangerBorder : actionType === 'accept' ? T.successBorder : T.blueBorder}` }}>
@@ -170,6 +173,20 @@ export default function ApplicationReview() {
                 <div><span style={{ color: T.textMuted }}>Email: </span><span style={{ color: T.textDark }}>{selected.email}</span></div>
                 <div><span style={{ color: T.textMuted }}>GPA: </span><span style={{ color: selected.gpa >= 2.7 ? T.success : T.danger, fontWeight: 600 }}>{selected.gpa ?? 'N/A'}</span></div>
                 <div><span style={{ color: T.textMuted }}>Program: </span><span style={{ color: T.textDark }}>{selected.program || 'N/A'}</span></div>
+                {/* --- NEW: employer info in modal --- */}
+                {selected.employerCompany && (
+                  <div style={{ gridColumn: '1 / -1', marginTop: '0.25rem', paddingTop: '0.4rem', borderTop: `1px solid ${T.cardBorder}` }}>
+                    <span style={{ color: T.textMuted }}>Employer: </span>
+                    <span style={{ color: T.textDark, fontWeight: '600' }}>{selected.employerCompany}</span>
+                    {selected.supervisorName && <span style={{ color: T.textMuted }}> · {selected.supervisorName}</span>}
+                    {selected.supervisorEmail && <span style={{ color: T.textMuted }}> ({selected.supervisorEmail})</span>}
+                  </div>
+                )}
+                {!selected.employerCompany && (
+                  <div style={{ gridColumn: '1 / -1', marginTop: '0.25rem', paddingTop: '0.4rem', borderTop: `1px solid ${T.cardBorder}` }}>
+                    <span style={{ color: T.textMuted, fontStyle: 'italic' }}>No employer reported yet</span>
+                  </div>
+                )}
               </div>
             </div>
 

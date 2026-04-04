@@ -118,7 +118,6 @@ function UploadSection({ userDocId, existingReport, onUploadSuccess }) {
     setErrorMsg('')
 
     try {
-      // 1. Upload PDF to Cloudinary
       const formData = new FormData()
       formData.append('file', file)
       formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
@@ -139,7 +138,6 @@ function UploadSection({ userDocId, existingReport, onUploadSuccess }) {
       const reportUrl  = cloudRes.secure_url
       const reportName = file.name
 
-      // 2. Save reportUrl into users/{uid} so coordinator can read it
       await updateDoc(doc(db, 'users', userDocId), {
         reportUrl,
         reportName,
@@ -206,16 +204,19 @@ export default function StudentDashboard() {
   const navigate = useNavigate()
   const { currentUser } = useAuth()
 
-  const [student,     setStudent]     = useState(null)
-  const [application, setApplication] = useState(null)
-  const [report,      setReport]      = useState(null)
-  const [loading,     setLoading]     = useState(true)
+  const [student,       setStudent]       = useState(null)
+  const [application,   setApplication]   = useState(null)
+  const [report,        setReport]        = useState(null)
+  const [loading,       setLoading]       = useState(true)
+  // --- NEW: employer form state ---
+  const [employerForm,  setEmployerForm]  = useState({ company: '', supervisorName: '', supervisorEmail: '' })
+  const [employerSaved, setEmployerSaved] = useState(false)
+  const [employerSaving,setEmployerSaving]= useState(false)
 
   useEffect(() => { if (currentUser) fetchData() }, [currentUser])
 
   async function fetchData() {
     try {
-      // users/{uid} — profile data + reportUrl once uploaded
       const userSnap = await getDoc(doc(db, 'users', currentUser.uid))
       if (userSnap.exists()) {
         const data = userSnap.data()
@@ -223,9 +224,20 @@ export default function StudentDashboard() {
         if (data.reportUrl) setReport({ url: data.reportUrl, name: data.reportName || 'report.pdf' })
       }
 
-      // applications/{uid} — co-op application status
       const appSnap = await getDoc(doc(db, 'applications', currentUser.uid))
-      if (appSnap.exists()) setApplication(appSnap.data())
+      if (appSnap.exists()) {
+        const appData = appSnap.data()
+        setApplication(appData)
+        // --- NEW: pre-populate employer form if already saved ---
+        if (appData.employerCompany) {
+          setEmployerForm({
+            company:         appData.employerCompany   || '',
+            supervisorName:  appData.supervisorName    || '',
+            supervisorEmail: appData.supervisorEmail   || '',
+          })
+          setEmployerSaved(true)
+        }
+      }
     } catch (err) {
       console.error(err)
     } finally {
@@ -233,10 +245,35 @@ export default function StudentDashboard() {
     }
   }
 
+  // --- NEW: save employer details to the application doc ---
+  async function saveEmployer() {
+    if (!employerForm.company.trim()) return
+    setEmployerSaving(true)
+    try {
+      await updateDoc(doc(db, 'applications', currentUser.uid), {
+        employerCompany:  employerForm.company,
+        supervisorName:   employerForm.supervisorName,
+        supervisorEmail:  employerForm.supervisorEmail,
+        employerReported: true,
+      })
+      setEmployerSaved(true)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setEmployerSaving(false)
+    }
+  }
+
   async function handleLogout() { await signOut(auth); navigate('/') }
 
   const status    = application?.status || 'pending'
   const canUpload = status === 'accepted' || status === 'provisional'
+
+  const fieldInputStyle = {
+    width: '100%', boxSizing: 'border-box', padding: '0.6rem 0.9rem',
+    borderRadius: '8px', border: '1.5px solid #dde3ed', fontSize: '0.88rem',
+    fontFamily: 'inherit', outline: 'none', backgroundColor: '#f8fafc', color: T.textDark,
+  }
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: T.pageBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
@@ -271,7 +308,7 @@ export default function StudentDashboard() {
           {[
             { label: 'Student ID',     value: student?.studentId || '—',                           accent: T.blue   },
             { label: 'Program status', value: (application?.status || 'pending').replace('_', ' '), accent: T.yellow },
-            { label: 'Report',         value: report ? 'Submitted' : 'Not submitted',                accent: report ? T.success : T.warning },
+            { label: 'Report',         value: report ? 'Submitted' : 'Not submitted',               accent: report ? T.success : T.warning },
           ].map(s => (
             <div key={s.label} style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderTop: `3px solid ${s.accent}`, borderRadius: '12px', padding: '1.1rem 1.4rem', boxShadow: T.cardShadow }}>
               <div style={{ fontSize: '1rem', fontWeight: '700', color: T.textDark, textTransform: 'capitalize' }}>{s.value}</div>
@@ -284,6 +321,49 @@ export default function StudentDashboard() {
 
         {application?.reportDeadline && (
           <div style={{ marginTop: '1rem' }}><DeadlineBanner deadlineDate={application.reportDeadline} /></div>
+        )}
+
+        {(status === 'provisional' || status === 'accepted') && (
+          <div style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', padding: '1.5rem', boxShadow: T.cardShadow, marginTop: '1.5rem' }}>
+            <div style={{ marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: '700', color: T.textDark, margin: 0 }}>My Employer</h2>
+              <p style={{ fontSize: '0.82rem', color: T.textMuted, marginTop: '0.25rem', marginBottom: 0 }}>
+                Enter the details of the employer you have secured your co-op placement with.
+              </p>
+            </div>
+
+            {[
+              { key: 'company',         label: 'Company Name',      placeholder: 'e.g. Acme Corp' },
+              { key: 'supervisorName',  label: 'Supervisor Name',   placeholder: 'e.g. Jane Smith' },
+              { key: 'supervisorEmail', label: 'Supervisor Email',  placeholder: 'e.g. jane@acme.com' },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom: '0.75rem' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: T.textDark, marginBottom: '0.3rem' }}>{f.label}</label>
+                <input
+                  value={employerForm[f.key]}
+                  onChange={e => { setEmployerForm(p => ({ ...p, [f.key]: e.target.value })); setEmployerSaved(false) }}
+                  placeholder={f.placeholder}
+                  style={fieldInputStyle}
+                />
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
+              <button
+                onClick={saveEmployer}
+                disabled={employerSaving || !employerForm.company.trim()}
+                style={{ padding: '0.55rem 1.25rem', borderRadius: '8px', border: 'none', backgroundColor: employerSaving || !employerForm.company.trim() ? '#9baee0' : T.blue, color: '#fff', fontSize: '0.88rem', fontWeight: '700', fontFamily: 'inherit', cursor: employerSaving || !employerForm.company.trim() ? 'not-allowed' : 'pointer' }}
+              >
+                {employerSaving ? 'Saving...' : employerSaved ? 'Update Employer' : 'Save Employer'}
+              </button>
+              {employerSaved && (
+                <span style={{ fontSize: '0.82rem', color: T.success, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T.success} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Saved
+                </span>
+              )}
+            </div>
+          </div>
         )}
 
         <div style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', padding: '1.5rem', boxShadow: T.cardShadow, marginTop: '1.5rem' }}>
@@ -326,10 +406,10 @@ export default function StudentDashboard() {
 
           <div style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', padding: '1.25rem 1.5rem', boxShadow: T.cardShadow }}>
             <h3 style={{ fontSize: '0.88rem', fontWeight: '700', color: T.textDark, margin: '0 0 1rem 0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>What's next</h3>
-            {status === 'pending'      && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>Your application is under review. The co-op coordinator will update your status once a decision has been made. Check back soon.</p>}
-            {status === 'provisional'  && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>You have been provisionally accepted. The coordinator will verify your eligibility before giving final confirmation. Keep an eye on your email.</p>}
-            {status === 'accepted'     && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>You are confirmed in the co-op program. Please upload your work term report before the deadline using the upload section on this page.</p>}
-            {status === 'rejected'     && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>Your application was not successful this term. Please contact the co-op coordinator for guidance on next steps or reapplying in a future term.</p>}
+            {status === 'pending'     && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>Your application is under review. The co-op coordinator will update your status once a decision has been made. Check back soon.</p>}
+            {status === 'provisional' && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>You have been provisionally accepted. Please enter your employer details above so the coordinator can confirm your placement.</p>}
+            {status === 'accepted'    && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>You are confirmed in the co-op program. Please upload your work term report before the deadline using the upload section on this page.</p>}
+            {status === 'rejected'    && <p style={{ fontSize: '0.85rem', color: T.textMid, lineHeight: 1.6, margin: 0 }}>Your application was not successful this term. Please contact the co-op coordinator for guidance on next steps or reapplying in a future term.</p>}
           </div>
         </div>
       </div>

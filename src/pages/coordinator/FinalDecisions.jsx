@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { db } from '../../firebase/firebase';
 
 const T = {
@@ -26,17 +26,23 @@ function Badge({ type, children }) {
 export default function FinalDecisions() {
   const navigate = useNavigate();
   const [applications, setApplications] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [workTerm, setWorkTerm] = useState('');
-  const [saving, setSaving]     = useState(false);
+  const [employers, setEmployers]       = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [selected, setSelected]         = useState(null);
+  const [workTerm, setWorkTerm]         = useState('');
+  const [selectedEmployer, setSelectedEmployer] = useState(null);
+  const [saving, setSaving]             = useState(false);
 
-  useEffect(() => { fetchApps(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  async function fetchApps() {
+  async function fetchData() {
     try {
-      const snap = await getDocs(collection(db, 'applications'));
-      setApplications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const [appSnap, empSnap] = await Promise.all([
+        getDocs(collection(db, 'applications')),
+        getDocs(query(collection(db, 'users'), where('role', '==', 'employer'))),
+      ]);
+      setApplications(appSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setEmployers(empSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
@@ -48,18 +54,48 @@ export default function FinalDecisions() {
     if (!selected) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'applications', selected.id), { status: 'accepted', workTerm, finalDecisionAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      setApplications(prev => prev.map(a => a.id === selected.id ? { ...a, status: 'accepted', workTerm } : a));
-      setSelected(null); setWorkTerm('');
+      await updateDoc(doc(db, 'applications', selected.id), {
+        status: 'accepted',
+        workTerm,
+        employerId:      selectedEmployer?.id      || null,
+        employerCompany: selectedEmployer?.company || null,
+        finalDecisionAt: serverTimestamp(),
+        updatedAt:       serverTimestamp(),
+      });
+      setApplications(prev => prev.map(a =>
+        a.id === selected.id
+          ? { ...a, status: 'accepted', workTerm, employerId: selectedEmployer?.id || null, employerCompany: selectedEmployer?.company || null }
+          : a
+      ));
+      closeModal();
     } catch (err) { console.error(err); }
     finally { setSaving(false); }
   }
 
   async function revertToProvisional(appId) {
     try {
-      await updateDoc(doc(db, 'applications', appId), { status: 'provisional', updatedAt: serverTimestamp() });
-      setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'provisional' } : a));
+      await updateDoc(doc(db, 'applications', appId), {
+        status: 'provisional',
+        employerId: null,
+        employerCompany: null,
+        updatedAt: serverTimestamp(),
+      });
+      setApplications(prev => prev.map(a =>
+        a.id === appId ? { ...a, status: 'provisional', employerId: null, employerCompany: null } : a
+      ));
     } catch (err) { console.error(err); }
+  }
+
+  function openModal(app) {
+    setSelected(app);
+    setWorkTerm(app.workTerm || '');
+    setSelectedEmployer(employers.find(e => e.id === app.employerId) || null);
+  }
+
+  function closeModal() {
+    setSelected(null);
+    setWorkTerm('');
+    setSelectedEmployer(null);
   }
 
   const navBtn = { background: 'transparent', border: `1.5px solid #e8edf5`, color: '#4a5568', padding: '0.45rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', fontFamily: 'inherit' };
@@ -86,10 +122,9 @@ export default function FinalDecisions() {
       <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem' }}>
         <div style={{ marginBottom: '1.75rem' }}>
           <h2 style={{ fontSize: '1.4rem', fontWeight: '700', color: T.textDark, margin: 0 }}>Final Decisions</h2>
-          <p style={{ fontSize: '0.88rem', color: T.textMuted, marginTop: '0.3rem' }}>Confirm or revert final co-op acceptances for provisionally accepted students.</p>
+          <p style={{ fontSize: '0.88rem', color: T.textMuted, marginTop: '0.3rem' }}>Confirm final co-op acceptances and assign an employer to each student.</p>
         </div>
 
-        {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '0.5rem' }}>
           {[
             { label: 'Awaiting Final Decision', value: provisional.length, accent: T.blue },
@@ -106,7 +141,9 @@ export default function FinalDecisions() {
         {/* Provisional list */}
         <SectionDivider label="Awaiting Final Decision" count={provisional.length} color={T.blue} />
         {!loading && provisional.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: T.textMuted, backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', fontSize: '0.88rem' }}>No provisionally accepted applicants pending final decision.</div>
+          <div style={{ textAlign: 'center', padding: '2rem', color: T.textMuted, backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', fontSize: '0.88rem' }}>
+            No provisionally accepted applicants pending final decision.
+          </div>
         )}
         {provisional.map(app => (
           <div key={app.id} style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '10px', padding: '1rem 1.25rem', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: T.cardShadow, transition: 'box-shadow 0.15s' }}
@@ -117,15 +154,16 @@ export default function FinalDecisions() {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: '600', color: T.textDark, fontSize: '0.9rem' }}>{app.name || app.studentName || 'Unknown'}</div>
-              <div style={{ fontSize: '0.75rem', color: T.textMuted, marginTop: '0.15rem', display: 'flex', gap: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: T.textMuted, marginTop: '0.15rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <span>{app.studentId}</span>
                 <span>{app.email}</span>
                 <span>{app.program}</span>
                 {app.gpa && <span style={{ color: app.gpa >= 2.7 ? T.success : T.danger, fontWeight: '600' }}>GPA {app.gpa}</span>}
+                {app.employerCompany && <span style={{ color: T.blue, fontWeight: '600' }}>Employer: {app.employerCompany}</span>}
               </div>
             </div>
             <Badge type="blue">Provisional</Badge>
-            <button onClick={() => { setSelected(app); setWorkTerm(app.workTerm || ''); }}
+            <button onClick={() => openModal(app)}
               style={{ padding: '0.5rem 1.1rem', borderRadius: '8px', border: 'none', backgroundColor: T.success, color: '#fff', fontSize: '0.85rem', fontWeight: '700', fontFamily: 'inherit', cursor: 'pointer' }}>
               Confirm Final
             </button>
@@ -135,7 +173,9 @@ export default function FinalDecisions() {
         {/* Accepted list */}
         <SectionDivider label="Finally Accepted" count={accepted.length} color={T.success} />
         {!loading && accepted.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: T.textMuted, backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', fontSize: '0.88rem' }}>No students have been finally accepted yet.</div>
+          <div style={{ textAlign: 'center', padding: '2rem', color: T.textMuted, backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderRadius: '12px', fontSize: '0.88rem' }}>
+            No students have been finally accepted yet.
+          </div>
         )}
         {accepted.map(app => (
           <div key={app.id} style={{ backgroundColor: T.card, border: `1px solid ${T.cardBorder}`, borderLeft: `3px solid ${T.success}`, borderRadius: '10px', padding: '1rem 1.25rem', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: T.cardShadow }}>
@@ -144,10 +184,11 @@ export default function FinalDecisions() {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: '600', color: T.textDark, fontSize: '0.9rem' }}>{app.name || app.studentName || 'Unknown'}</div>
-              <div style={{ fontSize: '0.75rem', color: T.textMuted, marginTop: '0.15rem', display: 'flex', gap: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: T.textMuted, marginTop: '0.15rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <span>{app.studentId}</span>
                 <span>{app.email}</span>
                 {app.workTerm && <span style={{ color: T.purple, fontWeight: '600' }}>Work Term: {app.workTerm}</span>}
+                {app.employerCompany && <span style={{ color: T.success, fontWeight: '600' }}>Employer: {app.employerCompany}</span>}
               </div>
             </div>
             <Badge type="success">Accepted</Badge>
@@ -160,19 +201,57 @@ export default function FinalDecisions() {
 
       {/* Confirm Modal */}
       {selected && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,31,75,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }} onClick={e => e.target === e.currentTarget && setSelected(null)}>
-          <div style={{ backgroundColor: '#fff', borderRadius: '14px', padding: '2rem', width: '100%', maxWidth: '440px', boxShadow: '0 8px 40px rgba(0,0,0,0.15)', border: `2px solid ${T.successBorder}` }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,31,75,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }} onClick={e => e.target === e.currentTarget && closeModal()}>
+          <div style={{ backgroundColor: '#fff', borderRadius: '14px', padding: '2rem', width: '100%', maxWidth: '460px', boxShadow: '0 8px 40px rgba(0,0,0,0.15)', border: `2px solid ${T.successBorder}` }}>
             <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: T.textDark, margin: '0 0 0.3rem 0' }}>Confirm Final Acceptance</h2>
             <p style={{ fontSize: '0.85rem', color: T.textMuted, margin: '0 0 1.25rem 0' }}>{selected.name || selected.studentName} — {selected.studentId}</p>
+
+            {/* Student's reported employer info */}
+            {selected.employerCompany && (
+              <div style={{ backgroundColor: T.blueLight, border: `1px solid ${T.blueBorder}`, borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+                <div style={{ fontWeight: '600', color: T.blue, marginBottom: '0.25rem' }}>Student reported employer:</div>
+                <div style={{ color: T.textDark }}>{selected.employerCompany}</div>
+                {selected.supervisorName  && <div style={{ color: T.textMuted }}>{selected.supervisorName}</div>}
+                {selected.supervisorEmail && <div style={{ color: T.textMuted }}>{selected.supervisorEmail}</div>}
+              </div>
+            )}
+
+            {/* Work term input */}
             <div style={{ marginBottom: '1.25rem' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: T.textDark, marginBottom: '0.4rem' }}>Work Term</label>
               <input style={inputStyle} value={workTerm} onChange={e => setWorkTerm(e.target.value)} placeholder="e.g. Winter 2026, Summer 2026" />
             </div>
+
+            {/* Employer assignment dropdown */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: T.textDark, marginBottom: '0.4rem' }}>Assign Employer Account</label>
+              {employers.length === 0 ? (
+                <div style={{ padding: '0.6rem 0.9rem', backgroundColor: '#f8fafc', border: '1.5px solid #dde3ed', borderRadius: '8px', fontSize: '0.85rem', color: T.textMuted, fontStyle: 'italic' }}>
+                  No employer accounts registered yet.
+                </div>
+              ) : (
+                <select
+                  style={inputStyle}
+                  value={selectedEmployer?.id || ''}
+                  onChange={e => setSelectedEmployer(employers.find(emp => emp.id === e.target.value) || null)}
+                >
+                  <option value="">Select an employer...</option>
+                  {employers.map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.company} — {emp.email}</option>
+                  ))}
+                </select>
+              )}
+              <p style={{ fontSize: '0.75rem', color: T.textMuted, marginTop: '0.35rem', marginBottom: 0 }}>
+                The selected employer will see this student in their portal.
+              </p>
+            </div>
+
             <div style={{ backgroundColor: T.successBg, border: `1px solid ${T.successBorder}`, borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.82rem', color: T.success, marginBottom: '1.5rem' }}>
               This student will be finally accepted into the co-op program.
             </div>
+
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setSelected(null)} style={{ padding: '0.55rem 1.1rem', borderRadius: '8px', border: `1.5px solid ${T.cardBorder}`, backgroundColor: 'transparent', color: T.textMid, fontSize: '0.88rem', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={closeModal} style={{ padding: '0.55rem 1.1rem', borderRadius: '8px', border: `1.5px solid ${T.cardBorder}`, backgroundColor: 'transparent', color: T.textMid, fontSize: '0.88rem', fontWeight: '600', fontFamily: 'inherit', cursor: 'pointer' }}>Cancel</button>
               <button disabled={saving} onClick={confirmFinal} style={{ padding: '0.55rem 1.25rem', borderRadius: '8px', border: 'none', backgroundColor: T.success, color: '#fff', fontSize: '0.88rem', fontWeight: '700', fontFamily: 'inherit', cursor: 'pointer' }}>
                 {saving ? 'Confirming...' : 'Confirm Acceptance'}
               </button>
