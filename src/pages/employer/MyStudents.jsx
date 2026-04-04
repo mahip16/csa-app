@@ -29,7 +29,7 @@ export default function MyStudents() {
       // Students the coordinator assigned to this employer
       const studentsQuery = query(
         collection(db, 'applications'),
-        where('employerId', '==', user.uid),
+        where('supervisorEmail', '==', user.email.toLowerCase()),
         where('status', '==', 'accepted')
       );
 

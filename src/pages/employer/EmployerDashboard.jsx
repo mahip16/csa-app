@@ -66,7 +66,7 @@ export default function EmployerDashboard() {
       // Students assigned to this employer by the coordinator
       const studentsQuery = query(
         collection(db, 'applications'),
-        where('employerId', '==', user.uid),
+        where('supervisorEmail', '==', user.email.toLowerCase()),
         where('status', '==', 'accepted')
       );
 

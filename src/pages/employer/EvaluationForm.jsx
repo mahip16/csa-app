@@ -52,7 +52,7 @@ export default function EmployerEvaluationForm() {
         if (!user) return;
         const snap = await getDocs(query(
           collection(db, 'applications'),
-          where('employerId', '==', user.uid),
+          where('supervisorEmail', '==', user.email.toLowerCase()),
           where('status', '==', 'accepted')
         ));
         const students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
